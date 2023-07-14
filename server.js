@@ -31,7 +31,7 @@ app.get("/transactions", (req, res) => {
 //gets an individual transaction.
 app.get("/transactions/:id", (req, res) => {
     const transactionsId = parseInt(req.params.id,10);//gets the id from the request
-    const transaction = transactions.find(transaction=>transaction.id===transactionId);//find the transaction with that id.
+    const transaction = transactions.find(transaction=>transaction.id===transactionsId);//find the transaction with that id.
     if(transaction){
         res.send(transaction);//print out the reqeuested transaction.
     }
@@ -72,7 +72,7 @@ app.delete("/transactions/:id",(req, res) => {
     const transactionId = parseInt(req.params.id, 10);
     const transactionIndex = transactions.findIndex(transaction =>transaction.id === transactionId);
     if(transactionIndex!==-1){
-        transactions.splice(jobtransactionIndexIndex,1);
+        transactions.splice(transactionIndex,1);
         res.send({message:"transaction deleted succesfully"});
     }
     else{
