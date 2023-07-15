@@ -2,82 +2,122 @@ const express = require("express");
 const transactions = require("./transactions");
 const app = express();
 const port = 4000;
+const { query } = require('./database');
+
 
 app.use(express.json()) 
 
 app.use((req, res, next) => {
+    console.log(`Request: ${req.method} ${req.originalUrl}`);
     res.on("finish", () => {
       // the 'finish' event will be emitted when the response is handed over to the OS
-      console.log(`Request: ${req.method} ${req.originalUrl} ${res.statusCode}`);
+      console.log(`Response Status: ${res.statusCode}`);
     });
     next();
   });
 
-function getNextIdFromCollection(collection) {
-    if(collection.length === 0) return 1; 
-    const lastRecord = collection[collection.length - 1];
-    return lastRecord.id + 1;
-}
 
 app.get("/", (req, res) => {
-  res.send("Welcome to the transaction Application Tracker API!");
+    res.send("Welcome to the transaction Application Tracker API!");
+  });
+
+//get all transactions from the database
+app.get("/transactions", async(req, res) => {
+    try{
+        const allTransactions = await query("SELECT * FROM transactionstable");
+        res.status(200).send(allTransactions.rows);
+    }
+    catch(error){
+            console.error(error);
+            res.status(500).json({ error: "Internal server error" });
+    }
+
 });
 
-//get all the transactions
-app.get("/transactions", (req, res) => {
- res.send(transactions);
-})
-
 //gets an individual transaction.
-app.get("/transactions/:id", (req, res) => {
+app.get("/transactions/:id", async(req, res) => {
+
     const transactionsId = parseInt(req.params.id,10);//gets the id from the request
-    const transaction = transactions.find(transaction=>transaction.id===transactionsId);//find the transaction with that id.
-    if(transaction){
-        res.send(transaction);//print out the reqeuested transaction.
+   try{
+    const transaction = await query("SELECT * FROM transactionstable WHERE id = $1", [transactionsId]);
+    if(transaction.rows.length>0){
+        res.status(200).json(transaction.rows[0]);
     }
     else{
-        res.status(404).send({message:"transaction Not Found!"});
+        res.status(404).send({message:"transaction Not Found"});
+    }
+   }catch(error){
+    console.error(error);
+    res.status(500).json({ error: "Internal server error" });
     }
     
 })
 
-//creates a new job.
-app.post("/transactions", (req, res) =>{
-    const newTransactions = {...req.body, id:getNextIdFromCollection(transactions)};
-    transactions.push(newTransactions);
-    console.log("new Transactions: ", newTransactions);
-    res.status(201).send(newTransactions);
+//creates a new transaciton.
+app.post("/transactions", async(req, res) =>{
+    //get the information out of the request by destructure all the inputs.
+   const{ date, description, category, amount, type} = req.body;
+   //make a new job
+   try{
+        const newTransaction = await query(
+            `INSERT INTO transactionstable ( date, description, category, amount, type) VALUES 
+            ($1, $2, $3, $4, $5) RETURNING *`,
+            [ date, description, category, amount, type]
+        )
+        console.log(newTransaction);
+        res.status(201).json(newTransaction.rows[0]);
+   }
+   catch(error){
+    console.log(error);
+    res.status(500).json({ error: "Internal server error" });
+   }
 })
 
-//update a specific job.
-app.patch("/transactions/:id", (req, res) =>{
+//update a specific transction.
+app.patch("/transactions/:id", async(req, res) =>{
     const transactionId = parseInt(req.params.id, 10);//get the id we want to change
-    const transactionUpdates = req.body;//the updates that will be made.
-    const transactionIndex = transactions.findIndex(transaction => transaction.id === transactionId);//find the item we want to change
-    if(transactionIndex!==-1){
-        const updatedTransaction = {
-            ...transactions[transactionIndex],
-            ...transactionUpdates
+    //destructure the request
+    const{ date, description, category, amount, type} = req.body;
+    //make a new transaction
+    try {
+        const updatedTransaction = await query(
+            "UPDATE transactionstable SET date = $1, description = $2, category = $3, amount = $4, type = $5 WHERE id = $6 RETURNING *",
+            [date, description, category, amount, type, transactionId]
+        );
+        //check to see if the update was even on a transaction that was there.
+        if(updatedTransaction.rows.length>0){
+            res.status(200).json(updatedTransaction.rows[0]);
+        }else{
+            res.status(404).send({message:"transaction Not Found"});
+            
         }
-        transactions[transactionIndex] = updatedTransaction;
-        res.send(updatedTransaction);
-    }else{
-        res.status(404).send({message:"transaction Not Found"});
+
+    } catch (error) {
+        console.log(error);
+        res.status(500).json({ error: "Internal server error" });
     }
     
 })
 
-//delete
-app.delete("/transactions/:id",(req, res) => {
+//delete a transaciton
+app.delete("/transactions/:id", async(req, res) => {
     const transactionId = parseInt(req.params.id, 10);
-    const transactionIndex = transactions.findIndex(transaction =>transaction.id === transactionId);
-    if(transactionIndex!==-1){
-        transactions.splice(transactionIndex,1);
-        res.send({message:"transaction deleted succesfully"});
+
+    try{
+        const deleteTransaction = await query("DELETE FROM transactionstable WHERE id = $1", [transactionId]);
+        
+        if(deleteTransaction.rowCount>0){
+            res.status(200).send({message:"transaction deleted successfully"});
+        }
+        else{
+            res.status(404).send({message:"transaction Not Found"});
+        }
     }
-    else{
-        res.status(404).send({message:"transaction Not Found"});
-    }
+    catch(error){
+            console.error(error);
+            res.status(500).json({ error: "Internal server error" });
+        }
+
 })
 
 app.listen(port, () => {
